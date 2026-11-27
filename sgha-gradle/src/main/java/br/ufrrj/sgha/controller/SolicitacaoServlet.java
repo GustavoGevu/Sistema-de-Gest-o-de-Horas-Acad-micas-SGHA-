@@ -1,12 +1,17 @@
 package br.ufrrj.sgha.controller;
 
 import br.ufrrj.sgha.config.AppConfig;
+import br.ufrrj.sgha.dao.SolicitacaoDAO;
 import br.ufrrj.sgha.model.Discente;
 import br.ufrrj.sgha.model.PerfilUsuario;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.MultipartConfig;
 import jakarta.servlet.annotation.WebServlet;
-import jakarta.servlet.http.*;
+import jakarta.servlet.http.HttpServlet;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
+import jakarta.servlet.http.Part;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Paths;
@@ -19,6 +24,8 @@ import java.util.UUID;
     maxRequestSize = 1024 * 1024 * 10     // 10 MB
 )
 public class SolicitacaoServlet extends HttpServlet {
+
+    private final SolicitacaoDAO solicitacaoDAO = new SolicitacaoDAO();
 
     @Override
     protected void doPost(HttpServletRequest request, HttpServletResponse response)
@@ -46,7 +53,7 @@ public class SolicitacaoServlet extends HttpServlet {
         filePart.write(destino.getAbsolutePath());
 
         PerfilUsuario comissao = PerfilUsuario.valueOf(comissaoStr);
-        MemoriaStore.criarSolicitacao(discente, titulo, nomeUnico, comissao, horas, obs);
+        solicitacaoDAO.criarParaDiscente(discente.getId(), titulo, nomeUnico, comissao, horas, obs);
 
         response.sendRedirect(request.getContextPath() + "/discente");
     }
