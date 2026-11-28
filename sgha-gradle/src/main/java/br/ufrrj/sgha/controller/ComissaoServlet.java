@@ -1,5 +1,11 @@
 package br.ufrrj.sgha.controller;
 
+import java.io.IOException;
+import java.time.LocalDate;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 import br.ufrrj.sgha.dao.SolicitacaoDAO;
 import br.ufrrj.sgha.dao.UsuarioComissaoDAO;
 import br.ufrrj.sgha.model.MandatoComissao;
@@ -12,9 +18,6 @@ import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
-import java.io.IOException;
-import java.time.LocalDate;
-import java.util.List;
 
 @WebServlet("/comissao")
 public class ComissaoServlet extends HttpServlet {
@@ -47,12 +50,30 @@ public class ComissaoServlet extends HttpServlet {
                 return;
             }
 
-            Long solicitacaoId = Long.parseLong(request.getParameter("solicitacaoId"));
+            long solicitacaoId = Long.parseLong(request.getParameter("solicitacaoId"));
             int horasHomologadas = Integer.parseInt(request.getParameter("horasHomologadas"));
+            String novoTitulo = request.getParameter("novoTituloDocumento");
             String parecerPublico = request.getParameter("parecerPublico");
             String obsPrivada = request.getParameter("obsPrivada");
 
-            solicitacaoDAO.avaliarSolicitacao(solicitacaoId, avaliador.getId(), horasHomologadas, null, parecerPublico, obsPrivada);
+            solicitacaoDAO.avaliarSolicitacao(solicitacaoId, avaliador.getId(), horasHomologadas, novoTitulo, parecerPublico, obsPrivada);
+            response.sendRedirect(request.getContextPath() + "/comissao");
+            return;
+        }
+
+        if ("restaurar".equals(acao)) {
+            HttpSession sessao = request.getSession(false);
+            UsuarioComissao coordenador = (sessao != null)
+                    ? (UsuarioComissao) sessao.getAttribute("usuarioComissaoLogado")
+                    : null;
+            if (coordenador == null) {
+                response.sendRedirect(request.getContextPath() + "/index.jsp");
+                return;
+            }
+
+            long solicitacaoId = Long.parseLong(request.getParameter("solicitacaoId"));
+            String justificativa = request.getParameter("justificativa");
+            solicitacaoDAO.restaurarSolicitacao(solicitacaoId, coordenador.getId(), justificativa);
             response.sendRedirect(request.getContextPath() + "/comissao");
             return;
         }
@@ -89,14 +110,33 @@ public class ComissaoServlet extends HttpServlet {
 
         MandatoComissao mandatoVigente = usuario.getMandatoVigente(LocalDate.now());
         PerfilUsuario perfilAtivo = (mandatoVigente != null) ? mandatoVigente.getPerfil() : null;
+        String busca = request.getParameter("busca");
 
-        List<Solicitacao> solicitacoes = (perfilAtivo != null && perfilAtivo != PerfilUsuario.COORDENADOR && perfilAtivo != PerfilUsuario.SECRETARIO)
-                ? solicitacaoDAO.listarPorComissao(perfilAtivo)
-                : solicitacaoDAO.listarTodos();
+        List<Solicitacao> solicitacoes;
+        if (perfilAtivo == PerfilUsuario.COORDENADOR) {
+            solicitacoes = solicitacaoDAO.listarGlobais(true, busca);
+        } else if (perfilAtivo == PerfilUsuario.SECRETARIO) {
+            solicitacoes = solicitacaoDAO.listarGlobais(false, busca);
+        } else if (perfilAtivo != null) {
+            solicitacoes = solicitacaoDAO.listarPorComissao(perfilAtivo);
+        } else {
+            solicitacoes = List.of();
+        }
+
+        Map<Long, List<Solicitacao>> mapaDuplicidades = new HashMap<>();
+        for (Solicitacao s : solicitacoes) {
+            List<Solicitacao> dup = solicitacaoDAO.buscarPossiveisDuplicidades(
+                    s.getId(), s.getDiscente().getId(), s.getTituloDocumento());
+            if (!dup.isEmpty()) {
+                mapaDuplicidades.put(s.getId(), dup);
+            }
+        }
 
         request.setAttribute("usuarioComissao", usuario);
         request.setAttribute("perfilAtivo", perfilAtivo);
         request.setAttribute("solicitacoes", solicitacoes);
+        request.setAttribute("mapaDuplicidades", mapaDuplicidades);
+        request.setAttribute("busca", busca != null ? busca : "");
         request.getRequestDispatcher("/dashboard-comissao.jsp").forward(request, response);
     }
 }
